@@ -1,0 +1,711 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Artemis II · Tracker</title>
+<style>
+:root{--or:#fc6d21;--bl:#0b3d91;}
+*{margin:0;padding:0;box-sizing:border-box;}
+html,body{width:100%;height:100%;background:#000;color:#fff;
+  font-family:-apple-system,BlinkMacSystemFont,'SF Pro Display','Helvetica Neue',sans-serif;
+  overflow:hidden;-webkit-tap-highlight-color:transparent;}
+canvas{display:block;}
+
+/* LOADING */
+#loading{position:fixed;inset:0;z-index:90;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;background:#000;transition:opacity .6s;}
+#loading.fade{opacity:0;pointer-events:none;}
+.spin{width:36px;height:36px;border:2px solid rgba(255,255,255,.1);
+  border-top-color:var(--or);border-radius:50%;animation:spin .9s linear infinite;margin-bottom:16px;}
+@keyframes spin{to{transform:rotate(360deg);}}
+.load-txt{font-size:11px;letter-spacing:3px;color:rgba(255,255,255,.35);}
+
+/* 3D HUD */
+#hud3d{position:fixed;inset:0;pointer-events:none;z-index:10;}
+#header{position:absolute;top:0;left:0;right:0;padding:16px 20px 40px;
+  padding-top:max(16px,env(safe-area-inset-top));
+  background:linear-gradient(180deg,rgba(0,0,0,.88) 0%,transparent 100%);}
+.agency{font-size:10px;font-weight:700;letter-spacing:4px;color:rgba(255,255,255,.5);margin-bottom:2px;}
+.mname{font-size:30px;font-weight:700;
+  background:linear-gradient(135deg,#fff 30%,#ffaa55 100%);
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;}
+.pill{display:inline-flex;align-items:center;gap:5px;margin-top:7px;padding:3px 11px;
+  border-radius:20px;font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;}
+.dot{width:5px;height:5px;border-radius:50%;}
+.p-live{background:rgba(0,230,80,.1);border:1px solid #00e650;color:#00e650;}
+.p-live .dot{background:#00e650;animation:blink 1.4s infinite;}
+.p-sim{background:rgba(255,180,0,.1);border:1px solid #ffb400;color:#ffb400;}
+.p-sim .dot{background:#ffb400;}
+.p-wait{background:rgba(100,150,255,.1);border:1px solid #6496ff;color:#6496ff;}
+.p-wait .dot{background:#6496ff;animation:blink .8s infinite;}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.15}}
+
+#stats{position:absolute;bottom:0;left:0;right:0;padding:16px 16px;
+  padding-bottom:max(72px,calc(env(safe-area-inset-bottom)+60px));
+  background:linear-gradient(0deg,rgba(0,0,0,.92) 0%,transparent 100%);}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px;}
+.card{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);
+  border-radius:14px;padding:11px 14px;backdrop-filter:blur(20px);}
+.lbl{font-size:9px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;
+  color:rgba(255,255,255,.38);margin-bottom:3px;}
+.val{font-size:22px;font-weight:700;line-height:1;font-variant-numeric:tabular-nums;}
+.unit{font-size:10px;color:rgba(255,255,255,.3);margin-top:2px;}
+.prog-track{height:3px;background:rgba(255,255,255,.1);border-radius:3px;overflow:hidden;margin-bottom:7px;}
+.prog-fill{height:100%;border-radius:3px;background:linear-gradient(90deg,var(--or),#ffaa00);transition:width .9s ease;}
+.phase-row{display:flex;justify-content:space-between;font-size:10px;color:rgba(255,255,255,.35);}
+.phase-name{color:#ff8844;font-weight:600;}
+
+/* SKY VIEW BUTTON */
+#sky-btn{position:fixed;bottom:max(24px,env(safe-area-inset-bottom));right:20px;
+  z-index:20;pointer-events:all;
+  background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);
+  color:#fff;font-size:12px;font-weight:600;letter-spacing:1px;
+  padding:10px 18px;border-radius:24px;cursor:pointer;
+  backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
+  display:flex;align-items:center;gap:6px;}
+#sky-btn:active{background:rgba(255,255,255,.2);}
+
+/* SKY / AR VIEW */
+#sky-view{position:fixed;inset:0;z-index:50;display:none;background:#000;}
+#cam-feed{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;}
+#ar-canvas{position:absolute;inset:0;width:100%;height:100%;}
+
+#sky-hud{position:absolute;inset:0;pointer-events:none;}
+#sky-header{position:absolute;top:0;left:0;right:0;
+  padding:12px 16px 20px;padding-top:max(12px,env(safe-area-inset-top));
+  background:linear-gradient(180deg,rgba(0,0,0,.75) 0%,transparent 100%);
+  display:flex;align-items:center;justify-content:space-between;}
+#back-btn{pointer-events:all;background:rgba(255,255,255,.12);
+  border:1px solid rgba(255,255,255,.2);color:#fff;font-size:13px;font-weight:600;
+  padding:7px 14px;border-radius:20px;cursor:pointer;}
+#sky-title{font-size:13px;font-weight:700;letter-spacing:1px;opacity:.8;}
+#compass-card{background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.15);
+  border-radius:12px;padding:6px 12px;text-align:center;}
+#compass-dir{font-size:20px;font-weight:700;line-height:1;}
+#compass-deg{font-size:9px;letter-spacing:1px;color:rgba(255,255,255,.5);margin-top:1px;}
+
+#sky-footer{position:absolute;bottom:0;left:0;right:0;
+  padding:16px;padding-bottom:max(20px,env(safe-area-inset-bottom));
+  background:linear-gradient(0deg,rgba(0,0,0,.8) 0%,transparent 100%);}
+.sky-row{display:flex;gap:8px;justify-content:center;margin-bottom:8px;}
+.sky-stat{background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.12);
+  border-radius:12px;padding:8px 14px;text-align:center;flex:1;max-width:120px;}
+.sky-lbl{font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:rgba(255,255,255,.4);}
+.sky-val{font-size:16px;font-weight:700;margin-top:2px;}
+#point-hint{text-align:center;font-size:11px;color:rgba(255,255,255,.4);
+  padding:4px 0;}
+
+#no-orient{position:absolute;inset:0;display:none;align-items:center;justify-content:center;
+  background:rgba(0,0,0,.85);text-align:center;padding:40px;}
+#no-orient p{font-size:15px;line-height:1.6;color:rgba(255,255,255,.7);}
+#no-orient strong{color:#fff;}
+
+#hint3d{position:fixed;bottom:180px;left:0;right:0;text-align:center;
+  font-size:11px;color:rgba(255,255,255,.22);z-index:5;pointer-events:none;
+  animation:fadeout 4s forwards 4s;}
+@keyframes fadeout{to{opacity:0;}}
+</style>
+</head>
+<body>
+
+<!-- LOADING -->
+<div id="loading"><div class="spin"></div><div class="load-txt">CONNECTING TO JPL</div></div>
+
+<!-- 3D HUD -->
+<div id="hud3d">
+  <div id="header">
+    <div class="agency">NASA · ARTEMIS PROGRAM</div>
+    <div class="mname">Artemis II</div>
+    <span class="pill p-wait" id="pill"><span class="dot"></span><span id="pill-txt">CONNECTING</span></span>
+  </div>
+  <div id="stats">
+    <div class="grid">
+      <div class="card"><div class="lbl">From Earth</div><div class="val" id="v-earth">—</div><div class="unit">kilometers</div></div>
+      <div class="card"><div class="lbl">From Moon</div><div class="val" id="v-moon">—</div><div class="unit">kilometers</div></div>
+      <div class="card"><div class="lbl">Velocity</div><div class="val" id="v-speed">—</div><div class="unit">km / second</div></div>
+      <div class="card"><div class="lbl">Mission Day</div><div class="val" id="v-day">—</div><div class="unit">of ~10 days</div></div>
+    </div>
+    <div class="prog-track"><div class="prog-fill" id="prog" style="width:0%"></div></div>
+    <div class="phase-row"><span class="phase-name" id="phase-name">Loading…</span><span id="data-ts">—</span></div>
+  </div>
+</div>
+
+<!-- Sky View FAB -->
+<button id="sky-btn" onclick="enterSkyView()">
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+    <circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1l2.1-2.1M17 7l2.1-2.1"/>
+  </svg>
+  Sky View
+</button>
+
+<!-- SKY / AR VIEW -->
+<div id="sky-view">
+  <video id="cam-feed" autoplay playsinline muted></video>
+  <canvas id="ar-canvas"></canvas>
+  <div id="sky-hud">
+    <div id="sky-header">
+      <button id="back-btn" onclick="exitSkyView()">← Back</button>
+      <span id="sky-title">ARTEMIS II · SKY VIEW</span>
+      <div id="compass-card">
+        <div id="compass-dir">—</div>
+        <div id="compass-deg">BEARING</div>
+      </div>
+    </div>
+    <div id="sky-footer">
+      <div class="sky-row">
+        <div class="sky-stat"><div class="sky-lbl">Elevation</div><div class="sky-val" id="s-el">—</div></div>
+        <div class="sky-stat"><div class="sky-lbl">Azimuth</div><div class="sky-val" id="s-az">—</div></div>
+        <div class="sky-stat"><div class="sky-lbl">Distance</div><div class="sky-val" id="s-dist">—</div></div>
+      </div>
+      <div id="point-hint">Point your phone at the sky to find Artemis II</div>
+    </div>
+    <div id="no-orient">
+      <p><strong>Compass Unavailable</strong><br><br>
+      Device orientation access is required for Sky View.<br>
+      Please allow motion &amp; orientation access in Settings → Safari → Motion &amp; Orientation Access.</p>
+    </div>
+  </div>
+</div>
+
+<div id="hint3d">Drag to rotate &nbsp;·&nbsp; Pinch to zoom</div>
+
+<script type="importmap">
+{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.158.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.158.0/examples/jsm/"}}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+// ═══════════════════════════════════════════════
+//  CONSTANTS
+// ═══════════════════════════════════════════════
+const MOON_DIST_KM = 384400, EARTH_R_KM = 6371, MOON_R_KM = 1737;
+const SCENE_R = 500; // Moon at 500 scene units
+const DISP  = SCENE_R / MOON_DIST_KM;
+const HFOV  = 65;    // camera horizontal FOV estimate (degrees)
+
+// Artemis 2 launch (approximate — update to actual date)
+const LAUNCH      = new Date('2026-04-07T18:00:00Z');
+const DURATION_MS = 10 * 24 * 3600 * 1000;
+
+const PHASES = [
+  {n:'Launch & Ascent',       r:[0.00,0.08]},
+  {n:'Earth Parking Orbit',   r:[0.08,0.18]},
+  {n:'Trans-Lunar Injection', r:[0.18,0.28]},
+  {n:'Lunar Transit',         r:[0.28,0.58]},
+  {n:'Lunar Flyby',           r:[0.58,0.68]},
+  {n:'Return Transit',        r:[0.68,0.90]},
+  {n:'Reentry & Splashdown',  r:[0.90,1.00]},
+];
+
+// NAIF spacecraft IDs to try in Horizons (Artemis 2 Orion)
+const NAIF_IDS = ['-67','-64','-65','-66','-68'];
+
+// ═══════════════════════════════════════════════
+//  THREE.JS SCENE
+// ═══════════════════════════════════════════════
+const renderer = new THREE.WebGLRenderer({antialias:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+renderer.setSize(innerWidth,innerHeight);
+document.body.insertBefore(renderer.domElement, document.getElementById('loading'));
+
+const scene  = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(55,innerWidth/innerHeight,1,20000);
+camera.position.set(0,280,860);
+
+const controls = new OrbitControls(camera,renderer.domElement);
+controls.enableDamping=true; controls.dampingFactor=0.06;
+controls.minDistance=100; controls.maxDistance=3000;
+controls.autoRotate=true; controls.autoRotateSpeed=0.38;
+
+scene.add(new THREE.AmbientLight(0x111122,2.5));
+const sun=new THREE.DirectionalLight(0xfff5e0,2.8);
+sun.position.set(8000,1200,3000); scene.add(sun);
+
+// Stars
+{const n=6000,p=new Float32Array(n*3);
+ for(let i=0;i<p.length;i++)p[i]=(Math.random()-.5)*14000;
+ const g=new THREE.BufferGeometry();
+ g.setAttribute('position',new THREE.BufferAttribute(p,3));
+ scene.add(new THREE.Points(g,new THREE.PointsMaterial({color:0xffffff,size:1.8,sizeAttenuation:true})));}
+
+// Earth
+const ER=30;
+const earth=new THREE.Mesh(new THREE.SphereGeometry(ER,64,64),
+  new THREE.MeshPhongMaterial({color:0x1565C0,emissive:0x091828,specular:0x223366,shininess:45}));
+scene.add(earth);
+scene.add(new THREE.Mesh(new THREE.SphereGeometry(ER*1.09,32,32),
+  new THREE.MeshPhongMaterial({color:0x44aaff,transparent:true,opacity:0.07,side:THREE.BackSide})));
+
+// Moon
+const moonMesh=new THREE.Mesh(new THREE.SphereGeometry(Math.max(9,MOON_R_KM*DISP),32,32),
+  new THREE.MeshPhongMaterial({color:0x999999,emissive:0x111111}));
+scene.add(moonMesh);
+
+// Moon orbit ring
+{const pts=[];for(let i=0;i<=128;i++){const a=i/128*Math.PI*2;pts.push(new THREE.Vector3(Math.cos(a)*SCENE_R,0,Math.sin(a)*SCENE_R));}
+ scene.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts),
+   new THREE.LineBasicMaterial({color:0x1a3a55,transparent:true,opacity:0.4})));}
+
+// Spacecraft
+let glowMesh;
+const craft=new THREE.Mesh(new THREE.SphereGeometry(3.5,16,16),
+  new THREE.MeshBasicMaterial({color:0xff8800}));
+glowMesh=new THREE.Mesh(new THREE.SphereGeometry(7.5,16,16),
+  new THREE.MeshBasicMaterial({color:0xff4400,transparent:true,opacity:0.22}));
+craft.add(glowMesh); scene.add(craft);
+
+// Trajectory
+let trajLine=null;
+function setTraj(kpts){
+  if(trajLine){scene.remove(trajLine);trajLine.geometry.dispose();}
+  if(kpts.length<2)return;
+  const g=new THREE.BufferGeometry().setFromPoints(kpts.map(p=>toScene(p.x,p.y,p.z)));
+  trajLine=new THREE.Line(g,new THREE.LineBasicMaterial({color:0xff6633,transparent:true,opacity:0.5}));
+  scene.add(trajLine);
+}
+
+// ═══════════════════════════════════════════════
+//  COORDINATE HELPERS
+// ═══════════════════════════════════════════════
+// Non-linear scale: near-Earth zone expanded for visibility
+function toScene(x,y,z){
+  const r=Math.sqrt(x*x+y*y+z*z);
+  if(r<1)return new THREE.Vector3(ER*1.05,0,0);
+  let rS=r<50000?ER+(r/50000)*(180-ER):180+((r-50000)/(MOON_DIST_KM-50000))*(SCENE_R-180);
+  const s=rS/r;
+  return new THREE.Vector3(x*s,z*s,-y*s); // ecliptic XY -> scene XZ
+}
+
+// Moon approximate position (geocentric equatorial, km)
+function moonKm(now=new Date()){
+  const days=(now-new Date('2000-01-01T12:00:00Z'))/86400000;
+  const a=(days/27.321661)*Math.PI*2;
+  return{x:MOON_DIST_KM*Math.cos(a),y:MOON_DIST_KM*Math.sin(a)*0.09,z:0};
+}
+
+// Mission progress 0..1
+function missionPct(now=new Date()){return Math.max(0,Math.min(1,(now-LAUNCH)/DURATION_MS));}
+function getPhase(p){if(p<=0)return'Pre-Launch';for(const ph of PHASES)if(p>=ph.r[0]&&p<ph.r[1])return ph.n;return p>=1?'Mission Complete':'—';}
+
+// ═══════════════════════════════════════════════
+//  SIMULATED FREE-RETURN TRAJECTORY
+// ═══════════════════════════════════════════════
+function simPos(pct){
+  if(pct<=0)return{x:EARTH_R_KM+300,y:0,z:0,vx:0,vy:7.8,vz:0};
+  let x,y,z,vx=0,vy=0,vz=0;
+  if(pct<0.08){const t=pct/0.08;x=EARTH_R_KM+400*t;y=0;z=0;vy=7.8;}
+  else if(pct<0.18){const t=(pct-0.08)/0.10,r=EARTH_R_KM+400,a=t*Math.PI*4;
+    x=r*Math.cos(a);y=r*Math.sin(a);z=0;vx=-7.8*Math.sin(a);vy=7.8*Math.cos(a);}
+  else if(pct<0.28){const t=(pct-0.18)/0.10;x=EARTH_R_KM+400+t*62000;y=t*18000;z=0;}
+  else if(pct<0.58){const t=(pct-0.28)/0.30;
+    x=62400+t*(MOON_DIST_KM*0.86-62400);y=18000*(1-t)+8000*t;z=5000*Math.sin(t*Math.PI);}
+  else if(pct<0.68){const t=(pct-0.58)/0.10,a=t*Math.PI,r=9000,mn=moonKm();
+    x=mn.x+r*Math.cos(a+Math.PI);y=mn.y+r*Math.sin(a)*0.4;z=2500*Math.sin(a);vy=1.4;}
+  else{const t=(pct-0.68)/0.32,mn=moonKm();
+    x=mn.x*(1-t)+(EARTH_R_KM+300)*t;y=mn.y*(1-t);z=2500*(1-t);}
+  return{x,y,z,vx,vy,vz};
+}
+
+// Map simulated position (Moon on +X axis) to geocentric equatorial
+// using actual Moon direction so sky coords are meaningful
+function simToEquatorial(pct,date=new Date()){
+  const mn=moonKm(date),sim=simPos(pct);
+  const mr=Math.hypot(mn.x,mn.y,mn.z);
+  const mh={x:mn.x/mr,y:mn.y/mr,z:mn.z/mr};      // Moon unit vec
+  // Perpendicular in equatorial plane
+  const pr=Math.hypot(-mh.y,mh.x,0);
+  const ph={x:-mh.y/pr,y:mh.x/pr,z:0};
+  // Out-of-plane
+  const oh={x:mh.y*ph.z-mh.z*ph.y,y:mh.z*ph.x-mh.x*ph.z,z:mh.x*ph.y-mh.y*ph.x};
+  return{
+    x:sim.x*mh.x+sim.y*ph.x+sim.z*oh.x,
+    y:sim.x*mh.y+sim.y*ph.y+sim.z*oh.y,
+    z:sim.x*mh.z+sim.y*ph.z+sim.z*oh.z,
+    vx:sim.vx,vy:sim.vy,vz:sim.vz,
+  };
+}
+
+// ═══════════════════════════════════════════════
+//  JPL HORIZONS API
+// ═══════════════════════════════════════════════
+function parseHorizons(text){
+  const s=text.indexOf('$$SOE'),e=text.indexOf('$$EOE');
+  if(s<0||e<0)return null;
+  const lines=text.slice(s+5,e).split('\n').map(l=>l.trim()).filter(Boolean);
+  const pts=[];
+  for(let i=0;i<lines.length-2;i++){
+    const L=lines[i];
+    if(!L.includes('TDB')&&!L.includes(' = '))continue;
+    const L1=lines[i+1]||'',L2=lines[i+2]||'';
+    const g=(k,src)=>{const m=src.match(new RegExp(k+'\\s*=\\s*([\\-\\d.E+]+)'));return m?parseFloat(m[1]):null;};
+    const x=g('X',L1),y=g('Y',L1),z=g('Z',L1);
+    if(x!=null)pts.push({x,y,z,vx:g('VX',L2)||0,vy:g('VY',L2)||0,vz:g('VZ',L2)||0});
+  }
+  return pts.length?pts:null;
+}
+
+async function fetchLive(){
+  const d1=new Date().toISOString().slice(0,10);
+  const d2=new Date(Date.now()+86400000).toISOString().slice(0,10);
+  for(const id of NAIF_IDS){
+    try{
+      const p=new URLSearchParams({format:'json',COMMAND:id,OBJ_DATA:'NO',
+        MAKE_EPHEM:'YES',EPHEM_TYPE:'VECTORS',CENTER:'500@399',
+        START_TIME:d1,STOP_TIME:d2,STEP_SIZE:'1h',OUT_UNITS:'KM-S',VEC_TABLE:'2'});
+      const res=await fetch('https://ssd.jpl.nasa.gov/api/horizons.api?'+p,
+        {signal:AbortSignal.timeout(8000)});
+      if(!res.ok)continue;
+      const json=await res.json();
+      const txt=json.result||'';
+      if(/No matches|ERROR|Ambiguous|cannot be matched/i.test(txt))continue;
+      const pts=parseHorizons(txt);
+      if(pts)return{pts,id};
+    }catch{continue;}
+  }
+  return null;
+}
+
+// ═══════════════════════════════════════════════
+//  ASTRONOMY: RA/Dec → Alt/Az
+// ═══════════════════════════════════════════════
+function getLST(date,lonDeg){
+  const JD=date.getTime()/86400000+2440587.5;
+  const T=(JD-2451545.0)/36525;
+  let gmst=280.46061837+360.98564736629*(JD-2451545)+0.000387933*T*T;
+  return((gmst%360)+360+lonDeg)%360; // degrees
+}
+
+function craftAltAz(pos,lat,lon,date=new Date()){
+  if(!pos||lat==null)return null;
+  const ra=Math.atan2(pos.y,pos.x);          // radians
+  const dec=Math.atan2(pos.z,Math.hypot(pos.x,pos.y)); // radians
+  const lst=getLST(date,lon);
+  let ha=(lst-ra*180/Math.PI+360)%360;
+  if(ha>180)ha-=360;
+  ha*=Math.PI/180;
+  const latR=lat*Math.PI/180;
+  const sinAlt=Math.sin(dec)*Math.sin(latR)+Math.cos(dec)*Math.cos(latR)*Math.cos(ha);
+  const altR=Math.asin(Math.max(-1,Math.min(1,sinAlt)));
+  const altDeg=altR*180/Math.PI;
+  const cosAz=(Math.sin(dec)-sinAlt*Math.sin(latR))/(Math.cos(altR)*Math.cos(latR));
+  let azDeg=Math.acos(Math.max(-1,Math.min(1,cosAz)))*180/Math.PI;
+  if(Math.sin(ha)>0)azDeg=360-azDeg;
+  return{alt:altDeg,az:azDeg};
+}
+
+// ═══════════════════════════════════════════════
+//  STATE
+// ═══════════════════════════════════════════════
+let craftEquatPos = null;   // spacecraft geocentric equatorial position (km)
+let userLat = null, userLon = null;
+let devAz = 0, devEl = 0;   // device pointing direction (degrees)
+let camStream = null;
+let arRAF = null;
+let skyActive = false;
+
+// ═══════════════════════════════════════════════
+//  3D UI UPDATE
+// ═══════════════════════════════════════════════
+function fmtKm(km){
+  if(km>=1e6)return(km/1e6).toFixed(2)+'M';
+  if(km>=10000)return Math.round(km/1000)+'K';
+  return Math.round(km).toLocaleString();
+}
+function updateHUD(pos,mn,pct,live){
+  const dE=Math.hypot(pos.x,pos.y,pos.z);
+  const dM=Math.hypot(pos.x-mn.x,pos.y-mn.y,pos.z-mn.z);
+  const spd=Math.hypot(pos.vx||0,pos.vy||0,pos.vz||0);
+  const elapsed=Date.now()-LAUNCH;
+  const day=elapsed>0?Math.floor(elapsed/86400000)+1:'—';
+  document.getElementById('v-earth').textContent=fmtKm(dE);
+  document.getElementById('v-moon').textContent=fmtKm(dM);
+  document.getElementById('v-speed').textContent=spd>0?spd.toFixed(2):'—';
+  document.getElementById('v-day').textContent=day;
+  document.getElementById('prog').style.width=(pct*100).toFixed(1)+'%';
+  document.getElementById('phase-name').textContent=getPhase(pct);
+  document.getElementById('data-ts').textContent=
+    new Date().toUTCString().replace(/ GMT$/,' UTC');
+  const pill=document.getElementById('pill'),txt=document.getElementById('pill-txt');
+  if(live){pill.className='pill p-live';txt.textContent='LIVE · JPL HORIZONS';}
+  else if(pct<=0){pill.className='pill p-wait';txt.textContent='PRE-LAUNCH';}
+  else{pill.className='pill p-sim';txt.textContent='SIMULATED';}
+}
+
+// ═══════════════════════════════════════════════
+//  DATA REFRESH
+// ═══════════════════════════════════════════════
+async function refresh(){
+  const liveResult=await fetchLive();
+  const mn=moonKm(), pct=missionPct();
+  let pos;
+  if(liveResult){
+    pos=liveResult.pts[liveResult.pts.length-1];
+    craftEquatPos=pos;
+    craft.position.copy(toScene(pos.x,pos.y,pos.z));
+    setTraj(liveResult.pts);
+    updateHUD(pos,mn,pct,true);
+  }else{
+    pos=simToEquatorial(pct);
+    craftEquatPos=pos;
+    craft.position.copy(toScene(pos.x,pos.y,pos.z));
+    const tpts=[];for(let i=0;i<=120;i++)tpts.push(simToEquatorial(i/120));
+    setTraj(tpts);
+    updateHUD({x:pos.x,y:pos.y,z:pos.z,vx:pos.vx,vy:pos.vy,vz:pos.vz},mn,pct,false);
+  }
+  const ld=document.getElementById('loading');
+  if(ld){ld.classList.add('fade');setTimeout(()=>ld.remove(),700);}
+}
+
+// ═══════════════════════════════════════════════
+//  3D ANIMATION LOOP
+// ═══════════════════════════════════════════════
+function animate3d(){
+  requestAnimationFrame(animate3d);
+  earth.rotation.y+=0.00035;
+  const mn=moonKm();
+  moonMesh.position.copy(toScene(mn.x,mn.y,mn.z));
+  glowMesh.material.opacity=0.14+Math.sin(Date.now()*0.004)*0.09;
+  controls.update();
+  renderer.render(scene,camera);
+}
+
+window.addEventListener('resize',()=>{
+  camera.aspect=innerWidth/innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth,innerHeight);
+  if(skyActive)resizeArCanvas();
+});
+
+// ═══════════════════════════════════════════════
+//  SKY / AR VIEW
+// ═══════════════════════════════════════════════
+const compassDirs=['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'];
+function azToCompass(az){return compassDirs[Math.round(az/22.5)%16];}
+
+function resizeArCanvas(){
+  const c=document.getElementById('ar-canvas');
+  c.width=innerWidth*devicePixelRatio;
+  c.height=innerHeight*devicePixelRatio;
+  c.style.width=innerWidth+'px';
+  c.style.height=innerHeight+'px';
+}
+
+// Device orientation handler
+function onOrient(e){
+  // iOS: webkitCompassHeading = clockwise from magnetic north
+  // Other: alpha is CCW from arbitrary north, not useful without absolute
+  const heading=e.webkitCompassHeading!=null?e.webkitCompassHeading:(360-(e.alpha||0))%360;
+  const beta=e.beta||0, gamma=e.gamma||0;
+  // Portrait mode: elevation = 90 - beta (flat=90°above, upright=0°, pointing down=-90°)
+  // Apply roll correction for slight gamma tilt
+  const elRaw=90-beta;
+  // gamma correction: when phone tilts left/right, elevation reading shifts
+  // simplified correction (works well for small gamma)
+  const elCorr=elRaw*Math.cos(gamma*Math.PI/180);
+  devAz=heading;
+  devEl=elCorr;
+  document.getElementById('compass-dir').textContent=azToCompass(heading);
+  document.getElementById('compass-deg').textContent=Math.round(heading)+'°';
+}
+
+// AR canvas drawing
+function drawAR(){
+  const canvas=document.getElementById('ar-canvas');
+  if(!canvas||!skyActive){return;}
+  const ctx=canvas.getContext('2d');
+  const W=canvas.width, H=canvas.height;
+  const dpr=devicePixelRatio||1;
+  ctx.clearRect(0,0,W,H);
+
+  const VFOV=HFOV*(H/W);
+  const now=new Date();
+
+  // Get spacecraft sky position
+  let cAlt=null,cAz=null,distKm=null;
+  if(craftEquatPos){
+    const latUse=userLat!=null?userLat:0;
+    const lonUse=userLon!=null?userLon:0;
+    const aa=craftAltAz(craftEquatPos,latUse,lonUse,now);
+    if(aa){cAlt=aa.alt;cAz=aa.az;}
+    distKm=Math.hypot(craftEquatPos.x,craftEquatPos.y,craftEquatPos.z);
+  }
+
+  // Update sky footer stats
+  if(cAlt!=null){
+    document.getElementById('s-el').textContent=cAlt.toFixed(1)+'°';
+    document.getElementById('s-az').textContent=cAz.toFixed(1)+'°';
+  }
+  if(distKm!=null){
+    document.getElementById('s-dist').textContent=fmtKm(distKm)+' km';
+  }
+
+  // Draw horizon line
+  const horizY=H/2+(devEl/VFOV)*H;
+  if(horizY>=0&&horizY<=H){
+    ctx.beginPath();ctx.moveTo(0,horizY);ctx.lineTo(W,horizY);
+    ctx.strokeStyle='rgba(100,200,255,0.25)';ctx.lineWidth=1*dpr;ctx.stroke();
+  }
+
+  // Draw compass markers at horizon
+  const cardinals=[{l:'N',a:0},{l:'NE',a:45},{l:'E',a:90},{l:'SE',a:135},
+    {l:'S',a:180},{l:'SW',a:225},{l:'W',a:270},{l:'NW',a:315}];
+  ctx.font=`600 ${11*dpr}px -apple-system,sans-serif`;
+  ctx.textAlign='center';
+  for(const d of cardinals){
+    let dA=d.a-devAz;if(dA>180)dA-=360;if(dA<-180)dA+=360;
+    if(Math.abs(dA)>HFOV/2+5)continue;
+    const sx=W/2+(dA/HFOV)*W;
+    const sy=H/2+(devEl/VFOV)*H;
+    if(sy<0||sy>H)continue;
+    ctx.fillStyle='rgba(120,210,255,0.55)';
+    ctx.fillText(d.l,sx,sy-8*dpr);
+    ctx.fillRect(sx-dpr,sy-4*dpr,2*dpr,4*dpr);
+  }
+
+  if(cAlt==null)return;
+
+  // Angular offset from device pointing to spacecraft
+  let dA=cAz-devAz;if(dA>180)dA-=360;if(dA<-180)dA+=360;
+  const dE=cAlt-devEl;
+
+  // Screen pixel position of spacecraft
+  const sx=W/2+(dA/HFOV)*W;
+  const sy=H/2-(dE/VFOV)*H;
+  const inView=sx>=-60*dpr&&sx<=W+60*dpr&&sy>=-60*dpr&&sy<=H+60*dpr;
+  const angDist=Math.sqrt(dA*dA+dE*dE);
+
+  const t=Date.now()*0.003;
+  const pulse=0.55+Math.sin(t)*0.25;
+
+  if(inView){
+    // Draw reticle at spacecraft position
+    const R=42*dpr, r=10*dpr;
+    ctx.strokeStyle=`rgba(255,110,20,${pulse})`;
+    ctx.lineWidth=1.5*dpr;
+    ctx.beginPath();ctx.arc(sx,sy,R,0,Math.PI*2);ctx.stroke();
+    ctx.beginPath();ctx.arc(sx,sy,r,0,Math.PI*2);ctx.stroke();
+    // Crosshair arms
+    ctx.beginPath();
+    ctx.moveTo(sx-R-18*dpr,sy);ctx.lineTo(sx-r-4*dpr,sy);
+    ctx.moveTo(sx+r+4*dpr,sy);ctx.lineTo(sx+R+18*dpr,sy);
+    ctx.moveTo(sx,sy-R-18*dpr);ctx.lineTo(sx,sy-r-4*dpr);
+    ctx.moveTo(sx,sy+r+4*dpr);ctx.lineTo(sx,sy+R+18*dpr);
+    ctx.stroke();
+    // Label
+    ctx.fillStyle=`rgba(255,160,80,${pulse+0.15})`;
+    ctx.font=`700 ${12*dpr}px -apple-system,sans-serif`;
+    ctx.textAlign='center';
+    ctx.fillText('ARTEMIS II',sx,sy-R-24*dpr);
+    if(distKm){
+      ctx.font=`500 ${10*dpr}px -apple-system,sans-serif`;
+      ctx.fillStyle=`rgba(255,200,120,${pulse})`;
+      ctx.fillText(fmtKm(distKm)+' km',sx,sy-R-10*dpr);
+    }
+    document.getElementById('point-hint').textContent='Artemis II is visible!';
+  } else {
+    // Draw direction arrow toward spacecraft
+    const angle=Math.atan2(dA,dE); // 0=up, clockwise
+    const edgeR=Math.min(W,H)*0.36;
+    const ax=W/2+Math.sin(angle)*edgeR;
+    const ay=H/2-Math.cos(angle)*edgeR;
+    ctx.save();ctx.translate(ax,ay);ctx.rotate(angle);
+    // Arrow head
+    ctx.beginPath();
+    ctx.moveTo(0,-22*dpr);ctx.lineTo(12*dpr,6*dpr);ctx.lineTo(-12*dpr,6*dpr);
+    ctx.closePath();
+    ctx.fillStyle=`rgba(255,100,20,${pulse+0.1})`;ctx.fill();
+    // Arrow shaft
+    ctx.beginPath();ctx.moveTo(0,6*dpr);ctx.lineTo(0,20*dpr);
+    ctx.strokeStyle=`rgba(255,100,20,${pulse})`;ctx.lineWidth=2.5*dpr;ctx.stroke();
+    ctx.restore();
+    // Label
+    ctx.fillStyle='rgba(255,150,80,0.9)';
+    ctx.font=`700 ${11*dpr}px -apple-system,sans-serif`;
+    ctx.textAlign='center';
+    ctx.fillText('ARTEMIS II',ax,ay+32*dpr);
+    ctx.font=`500 ${10*dpr}px -apple-system,sans-serif`;
+    ctx.fillStyle='rgba(255,180,100,0.7)';
+    ctx.fillText(Math.round(angDist)+'° away',ax,ay+46*dpr);
+    const dirHint=`Look ${azToCompass(cAz)} at ${cAlt>0?cAlt.toFixed(0)+'° up':'below horizon'}`;
+    document.getElementById('point-hint').textContent=dirHint;
+  }
+}
+
+function arLoop(){
+  if(!skyActive)return;
+  drawAR();
+  arRAF=requestAnimationFrame(arLoop);
+}
+
+// ═══════════════════════════════════════════════
+//  SKY VIEW ENTRY / EXIT
+// ═══════════════════════════════════════════════
+window.enterSkyView = async function(){
+  // 1. Geolocation
+  if(navigator.geolocation){
+    navigator.geolocation.getCurrentPosition(p=>{
+      userLat=p.coords.latitude;userLon=p.coords.longitude;
+    },()=>{/* use 0,0 fallback */});
+  }
+
+  // 2. Device orientation permission (iOS 13+)
+  let orientOk=true;
+  if(typeof DeviceOrientationEvent!=='undefined'&&
+     typeof DeviceOrientationEvent.requestPermission==='function'){
+    try{
+      const resp=await DeviceOrientationEvent.requestPermission();
+      orientOk=(resp==='granted');
+    }catch(err){orientOk=false;}
+  }
+
+  // 3. Camera
+  try{
+    camStream=await navigator.mediaDevices.getUserMedia({
+      video:{facingMode:{ideal:'environment'},width:{ideal:1280},height:{ideal:720}}
+    });
+    document.getElementById('cam-feed').srcObject=camStream;
+  }catch(err){
+    // Camera denied — show plain black background, still show AR overlay
+    console.warn('Camera denied:',err);
+  }
+
+  // Show sky view
+  skyActive=true;
+  document.getElementById('sky-view').style.display='block';
+  controls.autoRotate=false;
+
+  if(!orientOk){
+    document.getElementById('no-orient').style.display='flex';
+  }else{
+    window.addEventListener('deviceorientation',onOrient,true);
+  }
+
+  resizeArCanvas();
+  arLoop();
+};
+
+window.exitSkyView = function(){
+  skyActive=false;
+  document.getElementById('sky-view').style.display='none';
+  window.removeEventListener('deviceorientation',onOrient,true);
+  if(arRAF){cancelAnimationFrame(arRAF);arRAF=null;}
+  if(camStream){camStream.getTracks().forEach(t=>t.stop());camStream=null;
+    document.getElementById('cam-feed').srcObject=null;}
+  controls.autoRotate=true;
+  document.getElementById('no-orient').style.display='none';
+};
+
+// ═══════════════════════════════════════════════
+//  BOOT
+// ═══════════════════════════════════════════════
+animate3d();
+refresh();
+setInterval(refresh, 5*60*1000);
+</script>
+</body>
+</html>
