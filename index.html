@@ -496,21 +496,27 @@ function resizeArCanvas(){
 }
 
 // Device orientation handler
+function applyOrientation(heading, beta, gamma){
+  // Elevation of the screen normal: arcsin(cos(β)·cos(γ)) derived from rotation matrix.
+  // This correctly handles roll (γ) without the linear-scaling error of (90-β)·cos(γ).
+  const βr=beta*Math.PI/180, γr=gamma*Math.PI/180;
+  devAz=heading;
+  devEl=Math.asin(Math.cos(βr)*Math.cos(γr))*180/Math.PI;
+  document.getElementById('compass-dir').textContent=azToCompass(heading);
+  document.getElementById('compass-deg').textContent=Math.round(heading)+'°';
+}
+
 function onOrient(e){
   // iOS: webkitCompassHeading = clockwise from magnetic north
   // Other: alpha is CCW from arbitrary north, not useful without absolute
   const heading=e.webkitCompassHeading!=null?e.webkitCompassHeading:(360-(e.alpha||0))%360;
-  const beta=e.beta||0, gamma=e.gamma||0;
-  // Portrait mode: elevation = 90 - beta (flat=90°above, upright=0°, pointing down=-90°)
-  // Apply roll correction for slight gamma tilt
-  const elRaw=90-beta;
-  // gamma correction: when phone tilts left/right, elevation reading shifts
-  // simplified correction (works well for small gamma)
-  const elCorr=elRaw*Math.cos(gamma*Math.PI/180);
-  devAz=heading;
-  devEl=elCorr;
-  document.getElementById('compass-dir').textContent=azToCompass(heading);
-  document.getElementById('compass-deg').textContent=Math.round(heading)+'°';
+  applyOrientation(heading, e.beta||0, e.gamma||0);
+}
+
+function onOrientAbsolute(e){
+  // deviceorientationabsolute provides alpha referenced to geographic north on Android Chrome
+  if(!e.absolute)return;
+  applyOrientation((360-(e.alpha||0))%360, e.beta||0, e.gamma||0);
 }
 
 // AR canvas drawing
@@ -681,6 +687,9 @@ window.enterSkyView = async function(){
 
   if(!orientOk){
     document.getElementById('no-orient').style.display='flex';
+  }else if('ondeviceorientationabsolute' in window){
+    // Android Chrome: provides alpha referenced to geographic north
+    window.addEventListener('deviceorientationabsolute',onOrientAbsolute,true);
   }else{
     window.addEventListener('deviceorientation',onOrient,true);
   }
@@ -692,6 +701,7 @@ window.enterSkyView = async function(){
 window.exitSkyView = function(){
   skyActive=false;
   document.getElementById('sky-view').style.display='none';
+  window.removeEventListener('deviceorientationabsolute',onOrientAbsolute,true);
   window.removeEventListener('deviceorientation',onOrient,true);
   if(arRAF){cancelAnimationFrame(arRAF);arRAF=null;}
   if(camStream){camStream.getTracks().forEach(t=>t.stop());camStream=null;
